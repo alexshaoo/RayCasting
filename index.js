@@ -14,10 +14,15 @@ const SCREEN_HEIGHT = window.innerHeight;
 const TICK = 30;
 const CELL_SIZE = 64;
 const PLAYER_SIZE = 10;
+const WALL_HEIGHT = CELL_SIZE * 5;
 const FOV = toRadians(69);
 
 const COLOURS = {
-    rays: "#ffa600"
+    rays: "#ffa600",
+    floor: "#d52b1e",
+    ceiling: "#ffffff",
+    wall: "#013aa6",
+    wallDark: "#012975"
 }
 
 const player = {
@@ -43,9 +48,9 @@ function clearScreen() {
 }
 
 function movePlayer() {
-    
-    player.x += player.speed*Math.cos(player.angle);
-    player.y += player.speed*Math.sin(player.angle);
+
+    player.x += player.speed * Math.cos(player.angle);
+    player.y += player.speed * Math.sin(player.angle);
 }
 
 function outOfMapBounds(x, y) {
@@ -53,39 +58,40 @@ function outOfMapBounds(x, y) {
 }
 
 function distance(x1, y1, x2, y2) {
-    return Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+    return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 }
 
 function toRadians(degrees) {
     return (degrees * Math.PI) / 180;
 }
 
+
+
+
 function getVCollision(angle) {
 
     // know which side we're facing (check left or right)
-    const right = Math.abs(Math.floor((angle - MATH.PI/2)/Math.PI) % 2);
+    const right = Math.abs(Math.floor((angle - Math.PI/2)/Math.PI) % 2);
 
     // nearest vertical
-    const firstX = Math.floor(player.x / CELL_SIZE) * CELL_SIZE;
-    if (right) {
-        firstX += CELL_SIZE;
-    }
+    const firstX = right
+        ? Math.floor(player.x / CELL_SIZE) * CELL_SIZE + CELL_SIZE
+        : Math.floor(player.x / CELL_SIZE) * CELL_SIZE;
 
     const firstY = player.y + (firstX-player.x) * Math.tan(angle);
 
-    const xA = right ? CELL_SIZE : -CELL_SIZE;
-    const yA = xA * Math.tan(angle);
+    const dx = right ? CELL_SIZE : -CELL_SIZE;
+    const dy = dx * Math.tan(angle);
 
     // check if any intersection points have wall
     let wall;
     let nextX = firstX;
     let nextY = firstY;
     while (!wall) {
-        const cellX = Math.floor(nextX / CELL_SIZE);
+        const cellX = right
+            ? Math.floor(nextX / CELL_SIZE)
+            : Math.floor(nextX / CELL_SIZE) - 1;
         const cellY = Math.floor(nextY / CELL_SIZE);
-        if (!right) {
-            cellX--;
-        }
 
         if (outOfMapBounds(cellX, cellY)) {
             break;
@@ -93,8 +99,8 @@ function getVCollision(angle) {
 
         wall = map[cellY][cellX];
         if (!wall) {
-            nextX += xA;
-            nextY += yA;
+            nextX += dx;
+            nextY += dy;
         }
     }
 
@@ -107,26 +113,24 @@ function getVCollision(angle) {
 
 function getHCollision(angle) {
 
-    const up = Math.abs(Math.floor(angle / MATH.PI) % 2);
-    const firstY = Math.floor(player.y / CELL_SIZE) * CELL_SIZE;
-    if (!up) {
-        firstY += CELL_SIZE;
-    }
+    const up = Math.abs(Math.floor(angle / Math.PI) % 2);
+    const firstY = up
+        ? Math.floor(player.y / CELL_SIZE) * CELL_SIZE
+        : Math.floor(player.y / CELL_SIZE) * CELL_SIZE + CELL_SIZE;
 
     const firstX = player.x + (firstY-player.y) / Math.tan(angle);
 
-    const yA = up ? -CELL_SIZE : CELL_SIZE;
-    const xA = yA / Math.tan(angle);
+    const dy = up ? -CELL_SIZE : CELL_SIZE;
+    const dx = dy / Math.tan(angle);
 
     let wall;
     let nextX = firstX;
     let nextY = firstY;
     while (!wall) {
         const cellX = Math.floor(nextX / CELL_SIZE);
-        const cellY = Math.floor(nextY / CELL_SIZE);
-        if (up) {
-            cellY--;
-        }
+        const cellY = up
+            ? Math.floor(nextY / CELL_SIZE) - 1
+            : Math.floor(nextY / CELL_SIZE);
 
         if (outOfMapBounds(cellX, cellY)) {
             break;
@@ -134,8 +138,8 @@ function getHCollision(angle) {
 
         wall = map[cellY][cellX];
         if (!wall) {
-            nextX += xA;
-            nextY += yA;
+            nextX += dx;
+            nextY += dy;
         }
     }
 
@@ -146,84 +150,50 @@ function getHCollision(angle) {
     };
 }
 
+
 // cast eacch ray, check vert and hori intersections
 function castRay(angle) {
     const vCollision = getVCollision(angle);
     const hCollision = getHCollision(angle);
 
-    return vCollision.distance >= hCollision.distance ? hCollision.distance : vCollision.distance;
+    return hCollision.distance >= vCollision.distance ? vCollision : hCollision;
 }
 
 function getRays() {
-    // const initialAngle = player.angle - FOV/2;
-    // const numRays = SCREEN_WIDTH;
-    // const dAngle = FOV/numRays;
+    const initialAngle = player.angle - FOV / 2;
+    const numRays = SCREEN_WIDTH;
+    const dAngle = FOV / numRays;
 
-    // return Array.from({length: numRays}, (_, i) => {
-    //     const angle = initialAngle + i*dAngle;
-    //     const ray = castRay(angle);
-    //     return ray;
-    // });
-    return []
+    return Array.from({ length: numRays }, (_, i) => {
+        const angle = initialAngle + i * dAngle;
+        const ray = castRay(angle);
+        return ray;
+    });
 }
 
 function renderScene(rays) {
-    
+
+    rays.forEach((ray, i) => {
+        const dist = ray.distance;
+        const wallHeight = 277 * (WALL_HEIGHT / dist);
+
+        // draw vertical line for walls
+        context.fillStyle = ray.vertical ? COLOURS.wallDark : COLOURS.wall;
+        context.fillRect(i, SCREEN_HEIGHT/2 - wallHeight/2, 1, wallHeight);
+        context.fillStyle = COLOURS.floor;
+        context.fillRect(i, SCREEN_HEIGHT/2 + wallHeight/2, 1, SCREEN_HEIGHT/2 - wallHeight/2);
+        context.fillStyle = COLOURS.ceiling;
+        context.fillRect(i, 0, 1, SCREEN_HEIGHT/2 - wallHeight/2)
+    });
 }
 
-// function renderMinimap(posX = 0, posY = 0, scale, rays) {
-//     const cellSize = scale * CELL_SIZE;
-//     map.forEach((row, y) => {
-//       row.forEach((cell, x) => {
-//         if (cell) {
-//           context.fillStyle = "grey";
-//           context.fillRect(
-//             posX + x * cellSize,
-//             posY + y * cellSize,
-//             cellSize,
-//             cellSize
-//           );
-//         }
-//       });
-//     });
-//     context.fillStyle = "blue";
-//     context.fillRect(
-//       posX + player.x * scale - 10 / 2,
-//       posY + player.y * scale - 10 / 2,
-//       10,
-//       10
-//     );
-  
-//     context.strokeStyle = "blue";
-//     context.beginPath();
-//     context.moveTo(player.x * scale, player.y * scale);
-//     context.lineTo(
-//       (player.x + Math.cos(player.angle) * 20) * scale,
-//       (player.y + Math.sin(player.angle) * 20) * scale
-//     );
-//     context.closePath();
-//     context.stroke();
-  
-//     context.strokeStyle = COLORS.rays;
-//     rays.forEach((ray) => {
-//       context.beginPath();
-//       context.moveTo(player.x * scale, player.y * scale);
-//       context.lineTo(
-//         (player.x + Math.cos(ray.angle) * ray.distance) * scale,
-//         (player.y + Math.sin(ray.angle) * ray.distance) * scale
-//       );
-//       context.closePath();
-//       context.stroke();
-//     });
-//   }
-  
 
 // x, y is position of minimap on screen
 function renderMinimap(x, y, scale, rays) {
 
-    let x_pos = x + player.x*scale;
-    let y_pos = y + player.y*scale;
-    
+    let x_pos = x + player.x * scale;
+    let y_pos = y + player.y * scale;
+
     const cellSize = scale * CELL_SIZE;
 
     // don't return anything, use forEach
@@ -231,7 +201,7 @@ function renderMinimap(x, y, scale, rays) {
         row.forEach((cell, i) => {
             if (cell) {
                 context.fillStyle = "grey";
-                context.fillRect(x + i*cellSize, y + j*cellSize, cellSize, cellSize);
+                context.fillRect(x + i * cellSize, y + j * cellSize, cellSize, cellSize);
             }
         });
     });
@@ -243,8 +213,8 @@ function renderMinimap(x, y, scale, rays) {
         context.moveTo(x_pos, y_pos);
 
         context.lineTo(
-            (player.x + ray.distance*Math.cos(ray.angle))*scale, 
-            (player.y + ray.distance*Math.sin(ray.angle))*scale,
+            (player.x + ray.distance * Math.cos(ray.angle)) * scale,
+            (player.y + ray.distance * Math.sin(ray.angle)) * scale,
         );
         context.closePath();
         context.stroke();
@@ -253,8 +223,8 @@ function renderMinimap(x, y, scale, rays) {
     // render player
     context.fillStyle = "blue";
     context.fillRect(
-        x_pos - PLAYER_SIZE/2,
-        y_pos - PLAYER_SIZE/2,
+        x_pos - PLAYER_SIZE / 2,
+        y_pos - PLAYER_SIZE / 2,
         PLAYER_SIZE, PLAYER_SIZE
     );
 
@@ -264,8 +234,8 @@ function renderMinimap(x, y, scale, rays) {
     context.beginPath();
     context.moveTo(x_pos, y_pos);
     context.lineTo(
-        (player.x + rayLength*Math.cos(player.angle))*scale, 
-        (player.y + rayLength*Math.sin(player.angle))*scale,
+        (player.x + rayLength * Math.cos(player.angle)) * scale,
+        (player.y + rayLength * Math.sin(player.angle)) * scale,
     );
 
     context.closePath();
@@ -273,7 +243,7 @@ function renderMinimap(x, y, scale, rays) {
 }
 
 function gameLoop() {
-    
+
     // clear screen and redraw every tick
     clearScreen();
     movePlayer();
@@ -293,13 +263,13 @@ document.addEventListener("keydown", (e) => {
         player.speed = 2;
     }
 
-    if (e.key === "d") {
+    if (e.key === "s") {
         player.speed = -2;
     }
 });
 
 document.addEventListener("keyup", (e) => {
-    if (e.key === "w" || e.key === "d") {
+    if (e.key === "w" || e.key === "s") {
         player.speed = 0;
     }
 });
